@@ -1,0 +1,121 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Dashboard Keselamatan - Hari Ini</title>
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <style>
+    body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#f3f4f6;color:#111;padding:14px}
+    .card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.06);padding:12px}
+    .btn{display:inline-block;padding:8px 12px;border-radius:6px;text-decoration:none;color:#fff;font-weight:600}
+    .btn-blue{background:#2563eb}.btn-green{background:#16a34a}.btn-gray{background:#6b7280}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border-bottom:1px solid #e5e7eb;text-align:left;font-size:13px}
+    .status-pill{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px}
+    @media (max-width:640px){
+      th:nth-child(3),td:nth-child(3),th:nth-child(4),td:nth-child(4){display:none}
+    }
+  </style>
+</head>
+<body>
+  <div x-data="app()" x-init="init()" class="max-w-4xl mx-auto">
+    <div class="card" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <div><strong>Dashboard Keselamatan — Hari Ini</strong><div style="font-size:12px;color:#6b7280" x-text="lastSyncText"></div></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-blue" @click="load()">Refresh</button>
+          <button class="btn btn-gray" @click="filterToday()">Hari Ini</button>
+          <button class="btn btn-gray" @click="filterAll()">Semua</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" x-show="rows.length>0">
+      <table>
+        <thead style="background:#f9fafb">
+          <tr><th>Nama</th><th>Kategori</th><th>Unit</th><th>Masa</th><th>Status</th><th style="width:160px">Aksi</th></tr>
+        </thead>
+        <tbody>
+          <template x-for="r in displayed" :key="r.__row">
+            <tr>
+              <td x-text="r['Nama'] || r['Name'] || r['VisitorName'] || r['Visitor']"></td>
+              <td x-text="r['Kategori'] || r['Category'] || r['CategoryActivity']"></td>
+              <td x-text="r['Unit'] || r['ResidentUnit']"></td>
+              <td x-text="shortTime(r['Timestamp'])"></td>
+              <td>
+                <span class="status-pill" :style="statusStyle(r['Status'])" x-text="r['Status'] || 'Pending'"></span>
+              </td>
+              <td>
+                <button class="btn btn-green" @click="mark(r.__row,'Status','Checked In', r['Status'])">Check In</button>
+                <button class="btn btn-gray" @click="mark(r.__row,'Status','Checked Out', r['Status'])" style="margin-left:6px">Check Out</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" x-show="rows.length===0">
+      <div style="text-align:center;color:#6b7280">Tiada rekod untuk dipaparkan</div>
+    </div>
+
+    <div style="margin-top:12px;font-size:12px;color:#6b7280">Nota: Jika network terputus, halaman akan cuba guna snapshot terakhir.</div>
+  </div>
+
+<script>
+function app(){
+  return {
+    rows: [],
+    displayed: [],
+    lastSyncText: '',
+    API_GET: 'https://script.google.com/macros/s/AKfycbwm_4fOCiPoHsot0fQcWML_wb0Nm-pCwfNmSzMquCOohUsVqGHsXuo6AUkRZfbVVxG0uA/exec?action=getToday',   // contoh: https://script.google.com/macros/s/XXX/exec?action=getToday
+    API_POST: 'https://script.google.com/macros/s/AKfycbwm_4fOCiPoHsot0fQcWML_wb0Nm-pCwfNmSzMquCOohUsVqGHsXuo6AUkRZfbVVxG0uA/exec', // contoh: https://script.google.com/macros/s/XXX/exec
+    TOKEN: 'REPLACE_WITH_APP_TOKEN',
+    init(){ this.load(); },
+    load(){
+      fetch(this.API_GET)
+      .then(r=>r.json())
+      .then(j=>{
+        this.rows = j.data || [];
+        this.displayed = this.rows.slice();
+        this.lastSyncText = j.sync ? new Date(j.sync).toLocaleString() : new Date().toLocaleString();
+        localStorage.setItem('sec_snapshot', JSON.stringify({rows:this.rows, sync:this.lastSyncText}));
+      })
+      .catch(()=> {
+        const snap = localStorage.getItem('sec_snapshot');
+        if (snap) { const s = JSON.parse(snap); this.rows = s.rows; this.displayed = this.rows.slice(); this.lastSyncText = s.sync; }
+        else { this.rows = []; this.displayed = []; this.lastSyncText = 'Offline'; }
+      });
+    },
+    filterToday(){
+      const tzOffset = new Date().toISOString().slice(0,10);
+      this.displayed = this.rows.filter(r => (r['Timestamp'] || '').slice(0,10) === tzOffset);
+    },
+    filterAll(){ this.displayed = this.rows.slice(); },
+    shortTime(ts){
+      if (!ts) return '';
+      try { const d = new Date(ts); return d.toLocaleString(); } catch(e) { return ts; }
+    },
+    statusStyle(s){
+      if (s==='Checked In') return 'background:#bbf7d0;color:#065f46';
+      if (s==='Checked Out') return 'background:#e5e7eb;color:#374151';
+      return 'background:#fef3c7;color:#92400e';
+    },
+    mark(row, field, value, expectedOld){
+      if (!confirm('Sahkan tindakan: ' + value + ' pada baris ' + row + '?')) return;
+      const payload = { token:this.TOKEN, action:'update', row: row, field: field, value: value, user:'security', expectedOld: expectedOld || '' , actionId: Date.now().toString() };
+      fetch(this.API_POST, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+      .then(r=>r.json())
+      .then(j=>{
+        if (j.ok) { this.load(); }
+        else if (j.error === 'conflict') { alert('Conflict: rekod telah berubah. Sila refresh.'); }
+        else { alert('Gagal update: ' + (j.error || JSON.stringify(j))); }
+      })
+      .catch(()=> alert('Ralat rangkaian; cuba lagi'));
+    }
+  }
+}
+</script>
+</body>
+</html>
