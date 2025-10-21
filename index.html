@@ -6,97 +6,186 @@
   <title>Dashboard Keselamatan - Hari Ini</title>
   <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   <style>
-    body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#f3f4f6;color:#111;padding:14px}
-    .card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.06);padding:12px}
-    .btn{display:inline-block;padding:8px 12px;border-radius:6px;text-decoration:none;color:#fff;font-weight:600}
+    body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#f3f4f6;color:#111;padding:12px}
+    .card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.06);padding:12px;margin-bottom:12px}
+    .btn{display:inline-block;padding:8px 12px;border-radius:6px;text-decoration:none;color:#fff;font-weight:600;cursor:pointer;border:0;box-sizing:border-box}
     .btn-blue{background:#2563eb}.btn-green{background:#16a34a}.btn-gray{background:#6b7280}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:8px;border-bottom:1px solid #e5e7eb;text-align:left;font-size:13px}
+    .muted{color:#6b7280;font-size:12px}
+    .table-wrapper{overflow-x:auto}
+    table{width:100%;border-collapse:collapse;min-width:720px}
+    th,td{padding:8px;border-bottom:1px solid #e5e7eb;text-align:left;font-size:13px;vertical-align:middle}
     .status-pill{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px}
+    .pager{display:flex;gap:8px;align-items:center}
+
+    /* NEW: alignment for action buttons */
+    .btn-cell { padding:8px; } /* keep spacing consistent in td */
+    .btn-pair {
+      display:flex;
+      flex-direction:column;
+      gap:3px;
+      width:140px;         /* fixed width so all pairs align */
+      align-items:stretch;
+    }
+    .btn-pair .btn { width:100%; min-height:38px; } /* full width and consistent height */
+
+    /* responsive adjustments */
+    @media (max-width:900px){ table{min-width:600px} }
     @media (max-width:640px){
-      th:nth-child(3),td:nth-child(3),th:nth-child(4),td:nth-child(4){display:none}
+      table{min-width:500px}
+      thead{display:none}
+      tr{display:block;margin-bottom:10px;background:#fff;padding:8px;border-radius:6px}
+      td{display:flex;justify-content:space-between;padding:6px;border-bottom:0}
+      td::before{content:attr(data-label);font-weight:600;margin-right:8px}
+      /* on small screens make button pair full width */
+      .btn-pair { width:120px; }
     }
   </style>
 </head>
 <body>
   <div x-data="app()" x-init="init()" class="max-w-4xl mx-auto">
-    <div class="card" style="margin-bottom:12px">
+    <div class="card" >
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
-        <div><strong>Dashboard Keselamatan — Hari Ini</strong><div style="font-size:12px;color:#6b7280" x-text="lastSyncText"></div></div>
+        <div>
+          <strong>Dashboard Keselamatan — Hari Ini</strong>
+          <div class="muted" x-text="lastSyncText"></div>
+        </div>
         <div style="display:flex;gap:8px;align-items:center">
-          <button class="btn btn-blue" @click="load()">Refresh</button>
-          <button class="btn btn-gray" @click="filterToday()">Hari Ini</button>
-          <button class="btn btn-gray" @click="filterAll()">Semua</button>
+          <button class="btn btn-blue" @click="reload()">Refresh</button>
+          <div class="pager" style="align-items:center">
+            <button class="btn btn-gray" :disabled="page===0" @click="prev()">Prev</button>
+            <div class="muted" style="min-width:120px;text-align:center">Page <strong x-text="page+1"></strong> · <span x-text="total"></span> rekod</div>
+            <button class="btn btn-gray" :disabled="(page+1)*pageSize >= total" @click="next()">Next</button>
+          </div>
+          <div>
+            <select x-model.number="pageSize" @change="goTo(0)" style="padding:8px;border-radius:6px">
+              <option value="10">10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
         </div>
       </div>
     </div>
 
     <div class="card" x-show="rows.length>0">
-      <table>
-        <thead style="background:#f9fafb">
-          <tr><th>Nama</th><th>Kategori</th><th>Unit</th><th>Masa</th><th>Status</th><th style="width:160px">Aksi</th></tr>
-        </thead>
-        <tbody>
-          <template x-for="r in displayed" :key="r.__row">
-            <tr>
-              <td x-text="r['Nama'] || r['Name'] || r['VisitorName'] || r['Visitor']"></td>
-              <td x-text="r['Kategori'] || r['Category'] || r['CategoryActivity']"></td>
-              <td x-text="r['Unit'] || r['ResidentUnit']"></td>
-              <td x-text="shortTime(r['Timestamp'])"></td>
-              <td>
-                <span class="status-pill" :style="statusStyle(r['Status'])" x-text="r['Status'] || 'Pending'"></span>
-              </td>
-              <td>
-                <button class="btn btn-green" @click="mark(r.__row,'Status','Checked In', r['Status'])">Check In</button>
-                <button class="btn btn-gray" @click="mark(r.__row,'Status','Checked Out', r['Status'])" style="margin-left:6px">Check Out</button>
-              </td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
+      <div class="table-wrapper">
+        <table>
+          <thead style="background:#f9fafb">
+            <tr><th>Nama</th><th>Kategori</th><th>Unit</th><th>Tarikh Masuk</th><th>Tarikh Keluar</th><th>Status</th><th style="width:160px">Aksi</th></tr>
+          </thead>
+          <tbody>
+            <template x-for="r in rows" :key="r.__row">
+              <tr>
+                <td data-label="Nama" x-text="r.displayName"></td>
+                <td data-label="Kategori" x-text="r.displayCategory"></td>
+                <td data-label="Unit" x-text="r.displayUnit"></td>
+                <td data-label="Tarikh ETA" x-text="r.displayETA"></td>
+                <td data-label="Tarikh ETD" x-text="r.displayETD"></td>
+                <td data-label="Status"><span class="status-pill" :style="statusStyle(r['Status'])" x-text="r['Status'] || 'Pending'"></span></td>
+                <td class="btn-cell" data-label="Aksi">
+                  <div class="btn-pair">
+                    <button class="btn btn-green" @click="mark(r.__row,'Status','Checked In', r['Status'])">Check In</button>
+                    <button class="btn btn-gray" @click="mark(r.__row,'Status','Checked Out', r['Status'])">Check Out</button>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <div class="card" x-show="rows.length===0">
       <div style="text-align:center;color:#6b7280">Tiada rekod untuk dipaparkan</div>
     </div>
 
-    <div style="margin-top:12px;font-size:12px;color:#6b7280">Nota: Jika network terputus, halaman akan cuba guna snapshot terakhir.</div>
+    <div class="muted" style="margin-top:12px">Nota: Data dimuat mengikut halaman; gunakan Prev/Next untuk semak rekod lain.</div>
   </div>
 
 <script>
+// Utility: parse pelbagai format tarikh kepada objek Date (atau null)
+function parseFlexibleDate(s){
+  if (s === null || s === undefined || s === '') return null;
+  if (s instanceof Date) return isNaN(s.getTime()) ? null : s;
+
+  // numeric serial Google Sheets/Excel
+  if (typeof s === 'number') {
+    const ms = (s - 25569) * 86400000;
+    const d = new Date(ms);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  const str = String(s).trim();
+  if (!str) return null;
+
+  // Try direct ISO parse
+  const iso = new Date(str);
+  if (!isNaN(iso.getTime())) return iso;
+
+  // Try dd/mm/yyyy or dd/mm/yy with optional time
+  const m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (m){
+    let day = parseInt(m[1],10);
+    let month = parseInt(m[2],10) - 1;
+    let year = parseInt(m[3],10);
+    if (year < 100) year += 2000;
+    const hh = m[4] ? parseInt(m[4],10) : 0;
+    const mm = m[5] ? parseInt(m[5],10) : 0;
+    const ss = m[6] ? parseInt(m[6],10) : 0;
+    const d = new Date(year, month, day, hh, mm, ss);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // Fallback: replace / with - and try
+  const alt = str.replace(/\//g,'-').split(' ')[0];
+  const altDate = new Date(alt);
+  if (!isNaN(altDate.getTime())) return altDate;
+
+  return null;
+}
+
+// Format date-only dd/mm/yyyy
+function formatDateDDMMYYYY(ts){
+  const d = parseFlexibleDate(ts);
+  if (!d) return '';
+  return d.toLocaleDateString('en-GB'); // dd/mm/yyyy
+}
+
 function app(){
   return {
     rows: [],
-    displayed: [],
+    total: 0,
+    page: 0,
+    pageSize: 25,
     lastSyncText: '',
-    API_GET: 'https://script.google.com/macros/s/AKfycbwm_4fOCiPoHsot0fQcWML_wb0Nm-pCwfNmSzMquCOohUsVqGHsXuo6AUkRZfbVVxG0uA/exec?action=getToday',   // contoh: https://script.google.com/macros/s/XXX/exec?action=getToday
-    API_POST: 'https://script.google.com/macros/s/AKfycbwm_4fOCiPoHsot0fQcWML_wb0Nm-pCwfNmSzMquCOohUsVqGHsXuo6AUkRZfbVVxG0uA/exec', // contoh: https://script.google.com/macros/s/XXX/exec
+    API_BASE: 'https://script.google.com/macros/s/AKfycbyoeFqX5h3E071UqA-iD8XmCYU7BOS2YRliW8geyR7VCZooq2w4s9NF-MCPl4gtE4TyRQ/exec',
+    API_GET: '',
+    API_POST: '',
     TOKEN: '851208azlan',
-    init(){ this.load(); },
-    load(){
-      fetch(this.API_GET)
+    init(){ this.API_GET = this.API_BASE + '?action=getToday'; this.API_POST = this.API_BASE; this.loadPage(); },
+    makeUrl(){ return this.API_GET + '&limit=' + this.pageSize + '&offset=' + (this.page * this.pageSize); },
+    loadPage(){
+      fetch(this.makeUrl())
       .then(r=>r.json())
       .then(j=>{
-        this.rows = j.data || [];
-        this.displayed = this.rows.slice();
+        this.rows = (j.data || []).map(normalizeRow);
+        this.total = j.total || (j.data || []).length;
         this.lastSyncText = j.sync ? new Date(j.sync).toLocaleString() : new Date().toLocaleString();
-        localStorage.setItem('sec_snapshot', JSON.stringify({rows:this.rows, sync:this.lastSyncText}));
+        localStorage.setItem('sec_snapshot', JSON.stringify({rows:this.rows, sync:this.lastSyncText, total:this.total, page:this.page, pageSize:this.pageSize}));
       })
       .catch(()=> {
         const snap = localStorage.getItem('sec_snapshot');
-        if (snap) { const s = JSON.parse(snap); this.rows = s.rows; this.displayed = this.rows.slice(); this.lastSyncText = s.sync; }
-        else { this.rows = []; this.displayed = []; this.lastSyncText = 'Offline'; }
+        if (snap) { const s = JSON.parse(snap); this.rows = s.rows; this.lastSyncText = s.sync; this.total = s.total || 0; }
+        else { this.rows = []; this.lastSyncText = 'Offline'; this.total = 0; }
       });
     },
-    filterToday(){
-      const tzOffset = new Date().toISOString().slice(0,10);
-      this.displayed = this.rows.filter(r => (r['Timestamp'] || '').slice(0,10) === tzOffset);
-    },
-    filterAll(){ this.displayed = this.rows.slice(); },
-    shortTime(ts){
-      if (!ts) return '';
-      try { const d = new Date(ts); return d.toLocaleString(); } catch(e) { return ts; }
-    },
+    reload(){ this.loadPage(); },
+    prev(){ if (this.page>0){ this.page--; this.loadPage(); } },
+    next(){ if ((this.page+1)*this.pageSize < this.total){ this.page++; this.loadPage(); } },
+    goTo(p){ this.page = p; this.loadPage(); },
+    // wrapper for template use if needed
+    shortTimeDateOnly(ts){ return formatDateDDMMYYYY(ts); },
     statusStyle(s){
       if (s==='Checked In') return 'background:#bbf7d0;color:#065f46';
       if (s==='Checked Out') return 'background:#e5e7eb;color:#374151';
@@ -108,13 +197,36 @@ function app(){
       fetch(this.API_POST, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
       .then(r=>r.json())
       .then(j=>{
-        if (j.ok) { this.load(); }
+        if (j.ok) { this.loadPage(); }
         else if (j.error === 'conflict') { alert('Conflict: rekod telah berubah. Sila refresh.'); }
         else { alert('Gagal update: ' + (j.error || JSON.stringify(j))); }
       })
       .catch(()=> alert('Ralat rangkaian; cuba lagi'));
     }
-  }
+  };
+}
+
+// normalizeRow: sediakan display fields dan seragamkan ETA/ETD
+function normalizeRow(r){
+  const out = Object.assign({}, r);
+
+  // map possible name columns
+  out.displayName = out['Nama'] || out['Name'] || out['VisitorName'] || out['Visitor'] || '';
+  out.displayCategory = out['Pilih pendaftaran'] || out['Category'] || out['CategoryActivity'] || '';
+  out.displayUnit = out['Unit'] || out['ResidentUnit'] || out['Unit rumah'] || '';
+
+  // normalize ETA/ETD column names from sheet; preserve empty ETD
+  out._ETA = out._ETA || out.ETA || out['Eta'] || out['ETA'] || out.Timestamp || '';
+  out._ETD = out._ETD || out.ETD || out['Etd'] || out['ETD'] || '';
+
+  // Prepare display values: date only for ETA and ETD using robust parser
+  out.displayETA = out._ETA ? formatDateDDMMYYYY(out._ETA) : '';
+  out.displayETD = out._ETD ? formatDateDDMMYYYY(out._ETD) : '';
+
+  // Ensure __row exists for actions (fallbacks)
+  out.__row = out.__row || out.Row || out.row || out['Row Number'] || out['Row'] || null;
+
+  return out;
 }
 </script>
 </body>
